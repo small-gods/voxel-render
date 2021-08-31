@@ -4,13 +4,24 @@
 #include <Windows.h>
 #include <stdexcept>
 #include <stdio.h>
+#include <vector>
 
 
+struct Material
+{
+	Color color;
+	float reflection;
+	float transparency;
+	float refraction;
+	bool light;
+};
+
+
+extern std::vector<Material> materialTable;
 
 template <size_t Dimension>
 struct Ray
 {
-	Color color;
 	fPoint<Dimension> point;
 	fVector<Dimension> vector;
 };
@@ -150,9 +161,98 @@ class Matrix
 {
 	using index_p = IndexPoint<Dimension>;
 	using f_point = fPoint<Dimension>;
-	using i_vector = iPoint<Dimension>;
+	using f_vector = fVector<Dimension>;
+	using i_vector = iVector<Dimension>;
 	NDimensionalMatrix<int, Dimension, Size> data;
 
+	struct TraceContext
+	{
+		Color color;
+		int depth;
+	};
+
+	struct Intersetcion
+	{
+		int m;
+		float t;
+		int side;
+	};
+
+	template <int Dim>
+	int MinIndex(int min, const f_point& p)
+	{
+		return MinIndex<Dim - 1>(p[Dim] < p[min] ? Dim : min, p);
+	}
+
+	template <>
+	int MinIndex<-1>(int min, const f_point& p)
+	{
+		return min;
+	}
+
+	int MinIndex(const f_point& p)
+	{
+		return MinIndex<Dimension - 2>(Dimension - 1, p);
+	}
+
+	float random()
+	{
+		return (rand() * RAND_MAX + rand()) / (float) (RAND_MAX * RAND_MAX);
+	}
+
+	f_vector randomDirection()
+	{
+		f_vector v;
+		do {
+			for (int i = 0; i < Dimension; ++i)
+				v[i] = random() - 0.5;
+		} while (v.Len() > 0.5);
+		return v.Norm();
+	}
+
+	Color ProcessingMaterial(
+		const TraceContext& context,
+		const Ray<Dimension>& ray,
+		const Intersetcion& inter)
+	{
+		const Material& material = materialTable[inter.m];
+		if (material.light)
+			return context.color * material.color;
+		if (context.depth > 3)
+			return { 0, 0, 0 };
+		f_vector rand_vec = randomDirection();
+		rand_vec[inter.side] = std::abs(rand_vec[inter.side]) * (ray.vector[inter.side] > 0 ? -1 : 1);
+		return Trace( {ray.point + ray.vector * (inter.t - 0.0001f), rand_vec },
+			{ context.color * material.color, context.depth + 1 });
+	}
+
+	Color Trace(const Ray<Dimension>& ray, const TraceContext& context)
+	{
+		index_p pos, step;
+		f_point next, len;
+		for (int i = 0; i < Dimension; ++i)
+		{
+			pos[i] = (int)ray.point[i];
+			step[i] = ray.vector[i] > 0 ? 1 : -1;
+			len[i] = std::abs(1 / ray.vector[i]);
+			next[i] = len[i] * (ray.vector[i] > 0 ? 1 - (ray.point[i] - pos[i]) : ray.point[i] - pos[i]);
+		}
+
+		int material = getMaterial(pos);
+		while (true)
+		{
+			int min_index = MinIndex(next);
+				
+			pos[min_index] += step[min_index];
+			if (pos[min_index] < 0 || pos[min_index] >= Size)
+				return {0, 0, 0};
+
+			if (int m = getMaterial(pos); material != m)
+				return ProcessingMaterial(context, ray, { m, next[min_index], min_index});
+
+			next[min_index] += len[min_index];
+		}
+	}
 public:
 	Matrix() : data(0)
 	{ }
@@ -167,44 +267,16 @@ public:
 		return data[p];
 	}
 
+	Color Trace(Ray<Dimension> ray)
+	{
+		return Trace(ray, { {1, 1, 1}, 0 });
+	}
+
 	int size() const
 	{
 		return Size;
 	}
 
-	float Trace(Ray<Dimension> ray)
-	{
-		index_p pos, step;
-		f_point next, len;
-		float vec_len = std::sqrt(ray.vector.Sqr());
-		for (int i = 0; i < Dimension; ++i)
-		{
-			ray.vector[i] = ray.vector[i] / vec_len;
-			pos[i] = (int)ray.point[i];
-			step[i] = ray.vector[i] > 0 ? 1 : -1;
-			len[i] = std::abs(1 / ray.vector[i]);
-			next[i] = len[i]; // TODO
-		}
-
-		int material = getMaterial(pos);
-		while (true)
-		{
-			int min_index = 0;
-			for (int i = 0; i < Dimension; ++i)
-				if (next[i] < next[min_index])
-					min_index = i;
-				
-			pos[min_index] += step[min_index];
-			if (pos[min_index] < 0 || pos[min_index] >= Size)
-				return 65536;
-
-			if (material != getMaterial(pos))
-			{
-				return next[min_index];
-			}
-			next[min_index] += len[min_index];
-		}
-	}
 };
 
 template <typename T, size_t Dimension>

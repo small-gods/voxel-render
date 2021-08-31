@@ -88,20 +88,7 @@ public:
 	Vector(const T& v) : BasePoint<T, Dimension>(v) {}
 	Vector(std::initializer_list<T> input) : BasePoint<T, Dimension>(input) {}
 
-	T Dot(const Vector& v) const
-	{
-		T result = 0;
-		for (int i = 0; i < Dimension; ++i)
-			result += (*this)[i] * v[i];
-		return result;
-	}
-
-	T Sqr()const
-	{
-		return this->Dot(*this);
-	}
-
-	Vector operator*(T t)
+	Vector operator*(T t) const
 	{
 		Vector result;
 		for (int i = 0; i < Dimension; ++i)
@@ -109,7 +96,7 @@ public:
 		return result;
 	}
 
-	Vector operator/(T t)
+	Vector operator/(T t) const
 	{
 		Vector result;
 		for (int i = 0; i < Dimension; ++i)
@@ -131,6 +118,29 @@ public:
 		for (int i = 0; i < Dimension; ++i)
 			result[i] = (*this)[i] - v[i];
 		return result;
+	}
+
+	T Dot(const Vector& v) const
+	{
+		T result = 0;
+		for (int i = 0; i < Dimension; ++i)
+			result += (*this)[i] * v[i];
+		return result;
+	}
+
+	T Sqr()const
+	{
+		return this->Dot(*this);
+	}
+
+	T Len()const
+	{
+		return std::sqrt(Sqr());
+	}
+
+	Vector Norm()const
+	{
+		return *this / Len();
 	}
 };
 

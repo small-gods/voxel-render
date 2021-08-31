@@ -60,21 +60,47 @@ struct Color
 class Canvas
 {
 	HDC hdc;
+	int pos_x, pos_y;
+	int width, height;
+	
+	COLORREF* matrix;
+
+	int coord(int x, int y)
+	{
+		return x + y * height;
+	}
 public:
-	Canvas(): hdc(GetDC(GetConsoleWindow())) { }
+	Canvas(int x, int y, int width, int height):
+		hdc(GetDC(GetConsoleWindow())),
+		pos_x(x), pos_y(y),
+		width(width), height(height),
+		matrix(new COLORREF[width * height])
+	{ }
 
 	void setPixel(int x, int y, COLORREF color)
 	{
-		SetPixel(hdc, x, y, color);
+		matrix[coord(x, y)] = color;
 	}
 
 	void setPixel(int x, int y, Color color, float k = 1)
 	{
-		setPixel(x, y, color.toWinColor(k));
+		matrix[coord(x, y)] = color.toWinColor(k);
 	}
 
 	void setPixel(float x, float y, Color color, float k = 1)
 	{
-		setPixel((int)x, (int)y, color.toWinColor(k));
+		matrix[coord((int)x, (int)y)] = color.toWinColor(k);
+	}
+
+	void Draw()
+	{
+		for (int y = 0; y < height; ++y)
+			for (int x = 0; x < width; ++x)
+				SetPixel(hdc, x + pos_x, y + pos_y, matrix[coord(x, y)]);
+	}
+
+	~Canvas()
+	{
+		delete[] matrix;
 	}
 };
