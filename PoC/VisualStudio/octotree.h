@@ -3,6 +3,7 @@
 #include "base.h"
 #include <Windows.h>
 #include <stdexcept>
+#include <stdio.h>
 
 
 
@@ -144,19 +145,79 @@ public:
 	}
 };
 
+template <size_t Dimension, size_t Size>
+class Matrix
+{
+	using index_p = IndexPoint<Dimension>;
+	using f_point = fPoint<Dimension>;
+	using i_vector = iPoint<Dimension>;
+	NDimensionalMatrix<int, Dimension, Size> data;
 
-template <size_t Dimension>
+public:
+	Matrix() : data(0)
+	{ }
+
+	void setMaterial(index_p p, int index)
+	{
+		data[p] = index;
+	}
+
+	int getMaterial(index_p p) const
+	{
+		return data[p];
+	}
+
+	int size() const
+	{
+		return Size;
+	}
+
+	float Trace(Ray<Dimension> ray)
+	{
+		index_p pos, step;
+		f_point next, len;
+		float vec_len = std::sqrt(ray.vector.Sqr());
+		for (int i = 0; i < Dimension; ++i)
+		{
+			ray.vector[i] = ray.vector[i] / vec_len;
+			pos[i] = (int)ray.point[i];
+			step[i] = ray.vector[i] > 0 ? 1 : -1;
+			len[i] = std::abs(1 / ray.vector[i]);
+			next[i] = len[i]; // TODO
+		}
+
+		int material = getMaterial(pos);
+		while (true)
+		{
+			int min_index = 0;
+			for (int i = 0; i < Dimension; ++i)
+				if (next[i] < next[min_index])
+					min_index = i;
+				
+			pos[min_index] += step[min_index];
+			if (pos[min_index] < 0 || pos[min_index] >= Size)
+				return 65536;
+
+			if (material != getMaterial(pos))
+			{
+				return next[min_index];
+			}
+			next[min_index] += len[min_index];
+		}
+	}
+};
+
+template <typename T, size_t Dimension>
 class VoxelDriver
 {
-	using octotree = OctoTree<Dimension>;
 	using index_p = IndexPoint<Dimension>;
 	using vect_p = iVector<Dimension>;
 
-	octotree& tree;
+	T& tree;
 	int size;
 
 public:
-	VoxelDriver(octotree& tree) :
+	VoxelDriver(T& tree) :
 		tree(tree),
 		size(tree.size())
 	{ }
