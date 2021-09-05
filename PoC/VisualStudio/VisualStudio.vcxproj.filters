@@ -29,5 +29,8 @@
     <ClInclude Include="base.h">
       <Filter>Исходные файлы</Filter>
     </ClInclude>
+    <ClInclude Include="random.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

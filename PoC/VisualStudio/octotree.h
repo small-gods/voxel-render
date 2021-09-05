@@ -1,6 +1,7 @@
 #pragma once
 #include "graph.h"
 #include "base.h"
+#include "random.h"
 #include <Windows.h>
 #include <stdexcept>
 #include <stdio.h>
@@ -27,15 +28,40 @@ struct Ray
 };
 
 
-template <size_t Dimension>
+template <size_t Dimension, size_t Depth>
 class OctoTree
 {
 	using index_p = IndexPoint<Dimension>;
+	using f_point = fPoint<Dimension>;
+	using f_vector = fVector<Dimension>;
+	using i_vector = iVector<Dimension>;
 
-	class Node
+	struct Intersetcion
 	{
-		NDimensionalMatrix<Node*, Dimension, 2> data;
+		int m;
+		float t;
+		int side;
+	};
 
+	template <int Dim>
+	int MinIndex(int min, const f_point& p)
+	{
+		return MinIndex<Dim - 1>(p[Dim] < p[min] ? Dim : min, p);
+	}
+
+	template <>
+	int MinIndex<-1>(int min, const f_point& p)
+	{
+		return min;
+	}
+
+	int MinIndex(const f_point& p)
+	{
+		return MinIndex<Dimension - 2>(Dimension - 1, p);
+	}
+
+	struct Node
+	{
 		static constexpr bool isPointer(Node* ptr)
 		{
 			return !(((unsigned long long)ptr) & 1);
@@ -105,7 +131,9 @@ class OctoTree
 
 		Node(Node* material) : data(material)
 		{ }
-	public:
+
+		NDimensionalMatrix<Node*, Dimension, 2> data;
+
 		Node(): Node((Node*)1)
 		{ }
 
@@ -129,30 +157,96 @@ class OctoTree
 		}
 	};
 
+	struct TraceContext
+	{
+		Color color;
+		int depth;
+	};
+
+	Color ProcessingMaterial(
+		const TraceContext& ctx,
+		const Ray<Dimension>& ray,
+		const Intersetcion& inter)
+	{
+		const Material& material = materialTable[inter.m];
+		if (material.light)
+			return ctx.color * material.color;
+
+		if (ctx.depth > 3)
+			return { 0, 0, 0 };
+
+		f_point start_point = ray.point + ray.vector * (inter.t - 0.0001f);
+
+		f_vector rand_vec = rnd.direction();
+		rand_vec[inter.side] = std::abs(rand_vec[inter.side]) * (ray.vector[inter.side] > 0 ? -1 : 1);
+		Color result = Trace(
+			{ ctx.color * material.color, ctx.depth + 1 },
+			{ start_point , rand_vec });
+
+		if (material.reflection > 0)
+		{
+			f_vector reflect_vector = ray.vector;
+			reflect_vector[inter.side] = -reflect_vector[inter.side];
+			result = result + Trace(
+				{ ctx.color * material.reflection, ctx.depth + 1 },
+				{ start_point, reflect_vector });
+		}
+		return result;
+	}
+
+	Color Trace(const TraceContext& ctx, const Ray<Dimension>& ray)
+	{
+		index_p pos, step;
+		f_point next, len;
+		for (int i = 0; i < Dimension; ++i)
+		{
+			pos[i] = (int)ray.point[i];
+			step[i] = ray.vector[i] > 0 ? 1 : -1;
+			len[i] = std::abs(1 / ray.vector[i]);
+			next[i] = len[i] * (ray.vector[i] > 0 ? 1 - (ray.point[i] - pos[i]) : ray.point[i] - pos[i]);
+		}
+
+		int material = getMaterial(pos);
+		while (true)
+		{
+			int min_index = MinIndex(next);
+
+			pos[min_index] += step[min_index];
+			if (pos[min_index] < 0 || pos[min_index] >= size())
+				return { 0, 0, 0 };
+
+			if (int m = getMaterial(pos); material != m)
+				return ProcessingMaterial(ctx, ray, { m, next[min_index], min_index });
+
+			next[min_index] += len[min_index] ;
+		}
+	}
+
 	Node root;
-	int depth;
+	Random<Dimension> rnd;
 
 public:
-	OctoTree(int depth) : depth(depth - 1), root() {}
+	OctoTree(): root() {}
 
 	void setMaterial(index_p p, int index)
 	{
-		root.setMaterial(p, index, depth);
+		root.setMaterial(p, index, Depth - 1);
 	}
 
 	int getMaterial(index_p p) const
 	{
-		return root.getMaterial(p, depth);
+		return root.getMaterial(p, Depth - 1);
 	}
 
-	//Color Trace(Ray ray)
-	//{
-	//	throw std::bad_exception();
-	//}
+	Color Trace(Ray<Dimension> ray)
+	{
+		TraceContext ctx{ {1, 1, 1}, 0 };
+		return Trace(ctx, ray);
+	}
 
 	int size() const
 	{
-		return 1 << (depth + 1);
+		return 1 << Depth;
 	}
 };
 
@@ -195,21 +289,6 @@ class Matrix
 		return MinIndex<Dimension - 2>(Dimension - 1, p);
 	}
 
-	float random()
-	{
-		return (rand() * RAND_MAX + rand()) / (float) (RAND_MAX * RAND_MAX);
-	}
-
-	f_vector randomDirection()
-	{
-		f_vector v;
-		do {
-			for (int i = 0; i < Dimension; ++i)
-				v[i] = random() - 0.5;
-		} while (v.Len() > 0.5);
-		return v.Norm();
-	}
-
 	Color ProcessingMaterial(
 		const TraceContext& context,
 		const Ray<Dimension>& ray,
@@ -218,12 +297,25 @@ class Matrix
 		const Material& material = materialTable[inter.m];
 		if (material.light)
 			return context.color * material.color;
+		
 		if (context.depth > 3)
 			return { 0, 0, 0 };
-		f_vector rand_vec = randomDirection();
+
+		f_point start_point = ray.point + ray.vector * (inter.t - 0.0001f);
+
+		f_vector rand_vec = rnd.direction();
 		rand_vec[inter.side] = std::abs(rand_vec[inter.side]) * (ray.vector[inter.side] > 0 ? -1 : 1);
-		return Trace( {ray.point + ray.vector * (inter.t - 0.0001f), rand_vec },
+		Color result = Trace( { start_point , rand_vec },
 			{ context.color * material.color, context.depth + 1 });
+		
+		if (material.reflection > 0)
+		{
+			f_vector reflect_vector = ray.vector;
+			reflect_vector[inter.side] = -reflect_vector[inter.side];
+			result = result + Trace({ start_point, reflect_vector },
+				{ context.color * material.reflection, context.depth + 1 });
+		}
+		return result;
 	}
 
 	Color Trace(const Ray<Dimension>& ray, const TraceContext& context)
@@ -242,7 +334,7 @@ class Matrix
 		while (true)
 		{
 			int min_index = MinIndex(next);
-				
+
 			pos[min_index] += step[min_index];
 			if (pos[min_index] < 0 || pos[min_index] >= Size)
 				return {0, 0, 0};
@@ -253,6 +345,8 @@ class Matrix
 			next[min_index] += len[min_index];
 		}
 	}
+
+	Random<Dimension> rnd;
 public:
 	Matrix() : data(0)
 	{ }

@@ -427,6 +427,50 @@ public:
 	const T& operator[](index_p p) const { return data; }
 };
 
+template <typename T, size_t Depth>
+class FixedStack
+{
+	T data[Depth];
+	int frame;
+public:
+	FixedStack(): frame(-1)
+	{}
+
+	bool empty() const
+	{
+		return frame == -1;
+	}
+
+	int size()
+	{
+		return frame;
+	}
+
+	const T& top() const
+	{
+		return data[frame];
+	}
+
+	T& top()
+	{
+		return data[frame];
+	}
+
+	void push(T&& val) {
+		++frame;
+		data[frame] = val;
+	}
+
+	void push(const T& val) {
+		++frame;
+		data[frame] = val;
+	}
+
+	void pop()
+	{
+		--frame;
+	}
+};
 
 template <size_t Dimension>
 using iPoint = Point<int, Dimension>;
