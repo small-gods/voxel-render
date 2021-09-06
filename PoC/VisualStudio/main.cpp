@@ -2,6 +2,11 @@
 #include "base.h"
 #include "octotree.h"
 
+#include <SFML/Window.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/Sprite.hpp>
+
 #include <iostream>
 #include <array>
 #include <string>
@@ -46,12 +51,43 @@ void sliceOctotree(const T& tree, Canvas& canvas)
 
 int main()
 {
+	//sf::RenderWindow window(sf::VideoMode(256, 256), "Render window");
+	//sf::Image image;
+	//image.create(256, 256);
+
+	//sf::Texture texture;
+	//texture.loadFromImage(image);
+
+	//sf::Sprite sprite;
+	//sprite.setTexture(texture);
+
+	//int shift = 0;
+
+	//while (window.isOpen())
+	//{
+	//	sf::Event event;
+	//	while (window.pollEvent(event))
+	//	{
+	//		if (event.type == sf::Event::Closed)
+	//			window.close();
+	//	}
+
+	//	++shift;
+	//	for (int i = 0; i < 256; ++i)
+	//		for (int j = 0; j < 256; ++j)
+	//			image.setPixel((i + shift) % 256, j, sf::Color(0, i, j));
+
+	//	texture.update(image);
+	//	window.draw(sprite);
+	//	window.display();
+	//}
+
 	int size = 500;
 	int deviations = 3;
 	Canvas canvas(100, 150, size, size);
 
-	OctoTree<3, 7>* tree = new OctoTree<3, 7>();
-	VoxelDriver<OctoTree<3, 7>, 3> driver(*tree);
+	Matrix<3, 7>* tree = new Matrix<3, 7>();
+	VoxelDriver<Matrix<3, 7>, 3> driver(*tree);
 	driver.FillRectangle({ 0, 0, 0 }, { 1, 128, 128 }, 1);
 	driver.FillRectangle({ 0, 0, 0 }, { 128, 1, 128 }, 1);
 	driver.FillRectangle({ 0, 0, 0 }, { 128, 128, 1 }, 4);
@@ -64,6 +100,12 @@ int main()
 
 
 	DeltaTime();
+
+	tree->RecalculateDistances();
+
+	double time = DeltaTime();
+	std::cout << time << std::endl;
+
 	for (int y = 0; y < size; ++y)
 		for (int x = 0; x < size; ++x)
 		{
@@ -77,7 +119,7 @@ int main()
 									}.Norm() });
 			canvas.setPixel(x, y, color / (deviations * deviations));
 		}
-	double time = DeltaTime();
+	time = DeltaTime();
 	std::cout << time << std::endl;
 
 	canvas.Draw();

@@ -2,7 +2,6 @@
 #include "graph.h"
 #include "base.h"
 #include "random.h"
-#include <Windows.h>
 #include <stdexcept>
 #include <stdio.h>
 #include <vector>
@@ -250,14 +249,14 @@ public:
 	}
 };
 
-template <size_t Dimension, size_t Size>
+template <size_t Dimension, size_t Depth>
 class Matrix
 {
 	using index_p = IndexPoint<Dimension>;
 	using f_point = fPoint<Dimension>;
 	using f_vector = fVector<Dimension>;
 	using i_vector = iVector<Dimension>;
-	NDimensionalMatrix<int, Dimension, Size> data;
+	using distanceMatrix = NDimensionalMatrix<byte, Dimension, 1 << Depth>;
 
 	struct TraceContext
 	{
@@ -294,6 +293,8 @@ class Matrix
 		const Ray<Dimension>& ray,
 		const Intersetcion& inter)
 	{
+		if (inter.m < 0 || inter.m >= materialTable.size())
+			printf("Xmmm...");
 		const Material& material = materialTable[inter.m];
 		if (material.light)
 			return context.color * material.color;
@@ -322,12 +323,26 @@ class Matrix
 	{
 		index_p pos, step;
 		f_point next, len;
+		Point<distanceMatrix*, Dimension> distances;
+		byte minDist = 255;
+		for (int i = 0; i < Dimension; ++i)
+			pos[i] = (int)ray.point[i];
+		
 		for (int i = 0; i < Dimension; ++i)
 		{
-			pos[i] = (int)ray.point[i];
-			step[i] = ray.vector[i] > 0 ? 1 : -1;
-			len[i] = std::abs(1 / ray.vector[i]);
-			next[i] = len[i] * (ray.vector[i] > 0 ? 1 - (ray.point[i] - pos[i]) : ray.point[i] - pos[i]);
+			distances[i] = ray.vector[i] > 0 ? &(backwardDistances[i]) : &(forwardDistances[i]);
+			minDist = std::min((*(distances[i]))[pos], minDist);
+		}
+		minDist = std::max(minDist - 1, 0);
+		Ray<Dimension> ray2 = ray;
+		ray2.point = ray.point + ray.vector * (minDist / ray.vector.ManhattanDistance());
+
+		for (int i = 0; i < Dimension; ++i)
+		{
+			pos[i] = (int)ray2.point[i];
+			step[i] = ray2.vector[i] > 0 ? 1 : -1;
+			len[i] = std::abs(1 / ray2.vector[i]);
+			next[i] = len[i] * (ray2.vector[i] > 0 ? 1 - (ray2.point[i] - pos[i]) : ray2.point[i] - pos[i]);
 		}
 
 		int material = getMaterial(pos);
@@ -336,19 +351,142 @@ class Matrix
 			int min_index = MinIndex(next);
 
 			pos[min_index] += step[min_index];
-			if (pos[min_index] < 0 || pos[min_index] >= Size)
+			if (pos[min_index] < 0 || pos[min_index] >= size())
 				return {0, 0, 0};
 
 			if (int m = getMaterial(pos); material != m)
-				return ProcessingMaterial(context, ray, { m, next[min_index], min_index});
+				return ProcessingMaterial(context, ray2, { m, next[min_index], min_index});
 
 			next[min_index] += len[min_index];
 		}
 	}
 
+
+	template <size_t Line>
+	void fillDimensionDistances(
+		const NDimensionalMatrix<byte, Line, 1 << Depth>& lastDistances,
+		NDimensionalMatrix<byte, Line, 1 << Depth>& distances,
+		const NDimensionalMatrix<int, Line, 1 << Depth>& lastMaterials,
+		const NDimensionalMatrix<int, Line, 1 << Depth>& materials,
+		int direction, int layer, int lastLayer)
+	{
+		if (Dimension - Line == direction)
+		{
+			fillDimensionDistances<Line - 1>(
+				lastDistances[lastLayer], distances[layer],
+				lastMaterials[lastLayer], materials[layer],
+				direction, layer, lastLayer);
+			return;
+		}
+		for (int i = 0; i < size(); ++i)
+		{
+			fillDimensionDistances<Line - 1>(
+				lastDistances[i], distances[i],
+				lastMaterials[i], materials[i],
+				direction, layer, lastLayer);
+		}
+	}
+
+	template <>
+	void fillDimensionDistances<0>(
+		const NDimensionalMatrix<byte, 0, 1 << Depth>& lastDistances,
+		NDimensionalMatrix<byte, 0, 1 << Depth>& distances,
+		const NDimensionalMatrix<int, 0, 1 << Depth>& lastMaterials,
+		const NDimensionalMatrix<int, 0, 1 << Depth>& materials,
+		int direction, int layer, int lastLayer)
+	{
+		distances = lastMaterials == materials ? lastDistances + 1 : 0;
+	}
+
+
+	template <size_t Line>
+	void fillLayer(
+		NDimensionalMatrix<byte, Line, 1 << Depth>& distances,
+		int direction, int layer, byte value)
+	{
+		if (Dimension - Line == direction)
+		{
+			fillLayer<Line - 1>(distances[layer], direction, layer, value);
+			return;
+		}
+		for (int i = 0; i < size(); ++i)
+			fillLayer<Line - 1>(distances[i], direction, layer, layer);
+	}
+
+	template <>
+	void fillLayer<0>(
+		NDimensionalMatrix<byte, 0, 1 << Depth>& distances,
+		int direction, int layer, byte value)
+	{
+		distances = value;
+	}
+
+
+	template <size_t Line>
+	bool dropLayer(
+		NDimensionalMatrix<byte, Dimension, 1 << Depth>& distances,
+		int direction, int layer, index_p& point)
+	{
+		if (Dimension - Line == direction)
+		{
+			return dropLayer<Line - 1>(distances, direction, layer, point);
+		}
+		bool f = true;
+		for (int i = 0; i < size(); ++i)
+		{
+			point[Dimension - Line] = i;
+			f &= dropLayer<Line - 1>(distances, direction, layer, point);
+		}
+		return f;
+	}
+
+	template <>
+	bool dropLayer<0>(
+		NDimensionalMatrix<byte, Dimension, 1 << Depth>& distances,
+		int direction, int layer, index_p& point)
+	{
+		index_p p1, p2;
+		for (int i = 0; i < Dimension; ++i)
+		{
+			if (i == direction)
+			{
+				p2[i] = (p1[i] = point[i]) + 1;
+			}
+			else
+			{
+				p1[i] = std::max(point[i] - 1, 0);
+				p2[i] = std::min(point[i] + 1, size() - 1) + 1;
+			}
+		}
+		byte min = 255;
+		index_p::forEach(p1, p2, [&](const index_p& p) {
+				byte v = distances[p];
+				if (v < min) min = v;
+			});
+		byte& depth = distances[point];
+		if (depth <= min + 1)
+			return true;
+		depth = min + 1;
+		return false;
+	}
+
+	void dropLayer(NDimensionalMatrix<byte, Dimension, 1 << Depth>& distances, int direction, int layer)
+	{
+		index_p point;
+		point[direction] = layer;
+		while (!dropLayer<Dimension>(distances, direction, layer, point));
+	}
+
 	Random<Dimension> rnd;
+	NDimensionalMatrix<int, Dimension, 1 << Depth> data;
+	Point<distanceMatrix, Dimension> forwardDistances;
+	Point<distanceMatrix, Dimension> backwardDistances;
+
 public:
-	Matrix() : data(0)
+	Matrix() :
+		data(0),
+		forwardDistances(),
+		backwardDistances()
 	{ }
 
 	void setMaterial(index_p p, int index)
@@ -361,16 +499,39 @@ public:
 		return data[p];
 	}
 
+	void RecalculateDistances()
+	{
+		for (int direction = 0; direction < Dimension; ++direction)
+		{
+			fillLayer(forwardDistances[direction], direction, 0, 0);
+			for (int i = 1; i < size(); ++i)
+			{
+				fillDimensionDistances(
+					forwardDistances[direction],
+					forwardDistances[direction],
+					data, data, direction, i, i - 1);
+				dropLayer(forwardDistances[direction], direction, i);
+			}
+			fillLayer(backwardDistances[direction], direction, size() - 1, 0);
+			for (int i = size() - 2; i >= 0; --i)
+			{
+				fillDimensionDistances(
+					backwardDistances[direction],
+					backwardDistances[direction],
+					data, data, direction, i, i + 1);
+				dropLayer(backwardDistances[direction], direction, i);
+			}
+		}
+	}
 	Color Trace(Ray<Dimension> ray)
 	{
 		return Trace(ray, { {1, 1, 1}, 0 });
 	}
 
-	int size() const
+	constexpr int size() const
 	{
-		return Size;
+		return 1 << Depth;
 	}
-
 };
 
 template <typename T, size_t Dimension>

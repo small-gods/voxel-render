@@ -1,7 +1,11 @@
 #pragma once
 
 #include <Windows.h>
+#undef min
+#undef max
+
 #include <cmath>
+#include <algorithm>
 
 struct Color
 {
@@ -47,7 +51,7 @@ struct Color
 	static int cut(float C, float k)
 	{
 		int v = (int)(k * C * 255);
-		return min(255, v);
+		return std::min(255, v);
 	}
 
 	COLORREF toWinColor(float k = 1) const

@@ -128,14 +128,22 @@ public:
 		return result;
 	}
 
-	T Sqr()const
+	T Sqr() const
 	{
 		return this->Dot(*this);
 	}
 
-	T Len()const
+	T Len() const
 	{
 		return std::sqrt(Sqr());
+	}
+
+	T ManhattanDistance() const
+	{
+		T result = 0;
+		for (int i = 0; i < Dimension; ++i)
+			result += std::abs((*this)[i]);
+		return result;
 	}
 
 	Vector Norm()const
@@ -363,7 +371,7 @@ public:
 	{
 		IndexPoint result;
 		for (int i = 0; i < Dimension; ++i)
-			result[i] = min(p1[i], p2[i]);
+			result[i] = std::min(p1[i], p2[i]);
 		return result;
 	}
 
@@ -371,7 +379,7 @@ public:
 	{
 		IndexPoint result;
 		for (int i = 0; i < Dimension; ++i)
-			result[i] = max(p1[i], p2[i]);
+			result[i] = std::max(p1[i], p2[i]);
 		return result;
 	}
 };
